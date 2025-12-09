@@ -12,6 +12,10 @@ class UserCreate(UserBase):
     last_name: Optional[str] = None
 
 
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
 
 class UserResponse(BaseModel):
     id: int

@@ -5,12 +5,13 @@ import binascii
 from .send_mail import send_otp_email
 from . import models
 from .database import engine, SessionLocal
-from .schema import UserCreate, UserResponse
+from .schema import UserCreate, UserResponse, UserLogin
 from .schema import TaskCreate, TaskResponse, TaskUpdate
 from typing import List
 import secrets
+from dotenv import load_dotenv
 models.Base.metadata.create_all(bind=engine) 
-
+load_dotenv()
 app = FastAPI(
     title="Todo Application",
     description="A simple Todo application with user authentication and OTP verification.",
@@ -26,6 +27,25 @@ def hash_password(password: str) -> str:
     dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000)
     return f"{salt}${binascii.hexlify(dk).decode()}"
 
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plain password against a stored hash.
+    
+    Args:
+        plain_password: The password to check.
+        hashed_password: The stored hash in format salt$hexkey.
+    
+    Returns: True if password matches, False otherwise.
+    """
+    try:
+        salt, stored_key = hashed_password.split("$")
+        dk = hashlib.pbkdf2_hmac("sha256", plain_password.encode("utf-8"), salt.encode("utf-8"), 100_000)
+        computed_key = binascii.hexlify(dk).decode()
+        return computed_key == stored_key
+    except (ValueError, Exception):
+        return False
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -40,7 +60,7 @@ def get_db():
 def read_root():
     return {"message": "Welcome to my todo application!"}
 
-@app.post("/users/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/register/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
     # check duplicate email
     existing = db.query(models.User).filter(models.User.email == user.email).first()
@@ -70,9 +90,26 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(otp)
 
-    send_otp_email(to_email=db_user.email, otp_code=code)
+    send_otp_email(to_email=db_user.email, otp_code=code, first_name=db_user.first_name, last_name=db_user.last_name)
     # return the created user (response_model filters out password)
     return db_user
+
+
+@app.post("/login", response_model=UserResponse)
+def login(user: UserLogin, db: Session = Depends(get_db)):
+    """Authenticate user with email and password. Returns user details if valid."""
+    # Find user by email
+    db_user = db.query(models.User).filter(models.User.email == user.email).first()
+    if not db_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    
+    # Verify password
+    if not verify_password(user.password, db_user.password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    
+    # Return user (password filtered out by response_model)
+    return db_user
+
 
 @app.post("/tasks/", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 def create_task(task: TaskCreate, db: Session = Depends(get_db)):
@@ -95,7 +132,7 @@ def get_all_tasks(db: Session = Depends(get_db)):
     return tasks
 
 
-@app.get("/tasks/completed", response_model=List[TaskResponse])
+@app.get("/completed tasks/", response_model=List[TaskResponse])
 def get_completed_tasks(db: Session = Depends(get_db)):
     """Return all tasks marked as completed."""
     tasks = db.query(models.Task).filter(models.Task.completed == True).all()
@@ -110,7 +147,7 @@ def get_task_by_id(task_id: int, db: Session = Depends(get_db)):
 
 
 
-@app.put("/tasks/{task_id}", response_model=TaskResponse)
+@app.put("/update tasks/{task_id}", response_model=TaskResponse)
 def update_task(task_id: int, task: TaskUpdate, db: Session = Depends(get_db)):
     db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
     if not db_task:
@@ -131,7 +168,7 @@ def update_task(task_id: int, task: TaskUpdate, db: Session = Depends(get_db)):
     db.refresh(db_task)
     return db_task
 
-@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete("/delete tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(task_id: int, db: Session = Depends(get_db)):   
     db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
     if not db_task:
