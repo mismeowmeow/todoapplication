@@ -132,7 +132,7 @@ def get_all_tasks(db: Session = Depends(get_db)):
     return tasks
 
 
-@app.get("/completed tasks/", response_model=List[TaskResponse])
+@app.get("/tasks/", response_model=List[TaskResponse])
 def get_completed_tasks(db: Session = Depends(get_db)):
     """Return all tasks marked as completed."""
     tasks = db.query(models.Task).filter(models.Task.completed == True).all()
@@ -147,7 +147,7 @@ def get_task_by_id(task_id: int, db: Session = Depends(get_db)):
 
 
 
-@app.put("/update_tasks/{task_id}", response_model=TaskResponse)
+@app.put("/tasks/{task_id}", response_model=TaskResponse)
 def update_task(task_id: int, task: TaskUpdate, db: Session = Depends(get_db)):
     db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
     if not db_task:
@@ -168,7 +168,7 @@ def update_task(task_id: int, task: TaskUpdate, db: Session = Depends(get_db)):
     db.refresh(db_task)
     return db_task
 
-@app.delete("/delete tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(task_id: int, db: Session = Depends(get_db)):   
     db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
     if not db_task:
